@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Mesas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+        }
+
+        .totals-panel {
+            width: 25%;
+            padding: 20px;
+            background-color: #5a5a5a;
+            border-right: 1px solid #ddd;
+        }
+
+        .totals-panel h2 {
+            margin-top: 0;
+        }
+
+        .main-content {
+            width: 75%;
+            padding: 20px;
+        }
+
+        .table-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .table-section h3 {
+            margin-top: 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .table-section ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .table-section ul li {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .buttons {
+            margin-top: 10px;
+        }
+
+        .buttons button {
+            margin-right: 5px;
+        }
+
+        .clear-totals {
+            background-color: red;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="totals-panel">
+        <h2>Totales</h2>
+        <p id="total-accumulated">$0.00</p>
+        <button class="clear-totals" onclick="clearTotals()">Limpiar Totales</button>
+    </div>
+
+    <div class="main-content">
+        <div id="tables-container">
+            <!-- Mesas se generarán dinámicamente -->
+        </div>
+        <button onclick="addTable()">Agregar Mesa</button>
+    </div>
+
+    <script>
+        let tables = JSON.parse(localStorage.getItem('tables')) || [];
+        let totalAccumulated = parseFloat(localStorage.getItem('totalAccumulated')) || 0;
+
+        function renderTables() {
+            const container = document.getElementById('tables-container');
+            container.innerHTML = '';
+
+            tables.forEach((table, index) => {
+                const tableSection = document.createElement('div');
+                tableSection.className = 'table-section';
+
+                const tableTotal = table.orders.reduce((sum, order) => sum + (order.price * order.quantity), 0);
+
+                tableSection.innerHTML = `
+                    <h3>
+                        <span contenteditable="true" onblur="editTableName(${index}, this.textContent)">
+                            ${table.name}
+                        </span>
+                        - Total: $${tableTotal.toFixed(2)}
+                    </h3>
+                    <ul id="orders-table-${index}">
+                        ${table.orders.map((order, i) => `
+                            <li>
+                                ${order.name} (${order.quantity} x $${order.price.toFixed(2)}) = $${(order.price * order.quantity).toFixed(2)}
+                                <button onclick="editOrder(${index}, ${i})">Editar</button>
+                                <button onclick="removeOrder(${index}, ${i})">Eliminar</button>
+                            </li>
+                        `).join('')}
+                    </ul>
+                    <div class="buttons">
+                        <input type="text" id="order-name-${index}" placeholder="Nombre del pedido">
+                        <input type="number" id="order-quantity-${index}" placeholder="Cantidad" min="1" value="1">
+                        <input type="number" id="order-price-${index}" placeholder="Precio por unidad" step="0.01">
+                        <button onclick="addOrder(${index})">Agregar Pedido</button>
+                    </div>
+                    <button onclick="cancelTable(${index})">Cancelar Mesa</button>
+                `;
+
+                container.appendChild(tableSection);
+            });
+
+            updateTotalDisplay();
+        }
+
+        function addTable() {
+            const defaultName = `Mesa ${tables.length + 1}`;
+            tables.push({ name: defaultName, orders: [] });
+            saveData();
+            renderTables();
+        }
+
+        function editTableName(tableIndex, newName) {
+            if (newName.trim() === "") {
+                alert("El nombre de la mesa no puede estar vacío.");
+                renderTables(); // Para restaurar el nombre anterior si se deja vacío
+            } else {
+                tables[tableIndex].name = newName.trim();
+                saveData();
+            }
+        }
+
+        function addOrder(tableIndex) {
+            const name = document.getElementById(`order-name-${tableIndex}`).value;
+            const quantity = parseInt(document.getElementById(`order-quantity-${tableIndex}`).value);
+            const price = parseFloat(document.getElementById(`order-price-${tableIndex}`).value);
+
+            if (name && !isNaN(quantity) && !isNaN(price)) {
+                tables[tableIndex].orders.push({ name, quantity, price });
+                saveData();
+                renderTables();
+            } else {
+                alert('Por favor, ingresa datos válidos.');
+            }
+        }
+
+        function editOrder(tableIndex, orderIndex) {
+            const order = tables[tableIndex].orders[orderIndex];
+            const newName = prompt('Editar nombre del pedido:', order.name);
+            const newQuantity = parseInt(prompt('Editar cantidad:', order.quantity));
+            const newPrice = parseFloat(prompt('Editar precio por unidad:', order.price));
+
+            if (newName && !isNaN(newQuantity) && !isNaN(newPrice)) {
+                tables[tableIndex].orders[orderIndex] = { name: newName, quantity: newQuantity, price: newPrice };
+                saveData();
+                renderTables();
+            } else {
+                alert('Datos inválidos. No se realizaron cambios.');
+            }
+        }
+
+        function removeOrder(tableIndex, orderIndex) {
+            tables[tableIndex].orders.splice(orderIndex, 1);
+            saveData();
+            renderTables();
+        }
+
+        function cancelTable(tableIndex) {
+            const tableTotal = tables[tableIndex].orders.reduce((acc, order) => acc + (order.price * order.quantity), 0);
+            totalAccumulated += tableTotal;
+
+            tables[tableIndex].orders = [];
+            saveData();
+            renderTables();
+        }
+
+        function clearTotals() {
+            totalAccumulated = 0;
+            saveData();
+            updateTotalDisplay();
+        }
+
+        function updateTotalDisplay() {
+            document.getElementById('total-accumulated').textContent = `$${totalAccumulated.toFixed(2)}`;
+        }
+
+        function saveData() {
+            localStorage.setItem('tables', JSON.stringify(tables));
+            localStorage.setItem('totalAccumulated', totalAccumulated);
+        }
+
+        // Inicializar la página
+        renderTables();
+    </script>
+</body>
+</html>
+
